@@ -6,7 +6,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AdminLayout } from './AdminLayout';
-import { api } from '../../services/api';
+import { api, getMediaUrl, compressImageFile } from '../../services/api';
 import {
   Plus,
   Pencil,
@@ -55,31 +55,39 @@ export const AdminPartners: React.FC = () => {
 
   const handleFileUpload = async (file: File) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+    const isImg = file.type.startsWith('image/') || /\.(jpe?g|png|webp|svg|gif|jfif|avif|heic|bmp)$/i.test(file.name);
+    if (!isImg) {
       setUploadError('Faqat rasm formatidagi fayllarni yuklash mumkin (PNG, JPG, SVG, WEBP)');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Fayl hajmi 10MB dan oshmasligi kerak');
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('Fayl hajmi 20MB dan oshmasligi kerak');
       return;
     }
 
     setIsUploading(true);
     setUploadError('');
     try {
-      const res = await api.uploadImage(file);
+      const res = await api.uploadImage(file, 'uploads');
       if (res && res.url) {
         setFormData((prev) => ({ ...prev, logo: res.url }));
       } else {
         throw new Error('URL olinmadi');
       }
     } catch {
-      // Local Base64 fallback ensures immediate reliable local display & persistence
-      const reader = new FileReader();
-      reader.onload = () => {
-        setFormData((prev) => ({ ...prev, logo: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      // High-quality WebP DataURL fallback ensures immediate permanent storage in PostgreSQL
+      try {
+        const compressed = await compressImageFile(file, 800, 0.90);
+        setFormData((prev) => ({ ...prev, logo: compressed }));
+      } catch {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        setFormData((prev) => ({ ...prev, logo: dataUrl }));
+      }
     } finally {
       setIsUploading(false);
     }
@@ -108,7 +116,7 @@ export const AdminPartners: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    if (!formData.name.trim() || isUploading) return;
 
     if (editingPartner) {
       await updatePartner(editingPartner.id, formData);
@@ -255,11 +263,14 @@ export const AdminPartners: React.FC = () => {
               <div className="w-32 h-32 rounded-2xl bg-white p-2.5 flex items-center justify-center mb-3.5 overflow-hidden border border-[#E2E8F0] shadow-2xs">
                 {partner.logo ? (
                   <img
-                    src={partner.logo}
+                    src={getMediaUrl(partner.logo)}
                     alt={partner.name}
                     className="w-full h-full object-contain"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/logo-icon.png';
+                      const target = e.target as HTMLImageElement;
+                      if (!target.src.endsWith('/logo-icon.png')) {
+                        target.src = '/logo-icon.png';
+                      }
                     }}
                   />
                 ) : (
@@ -454,7 +465,7 @@ export const AdminPartners: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div className="w-16 h-16 rounded-xl bg-white p-1.5 border border-[#E2E8F0] flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
                           <img
-                            src={formData.logo}
+                            src={getMediaUrl(formData.logo)}
                             alt="Logo preview"
                             className="w-full h-full object-contain"
                           />
@@ -462,7 +473,7 @@ export const AdminPartners: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-[#1E293B] block">Logotip tayyor</span>
                           <span className="text-[11px] text-[#64748B] block truncate max-w-[200px]">
-                            {formData.logo}
+                            {formData.logo.startsWith('data:') ? 'Siqilgan WebP logotipi' : formData.logo}
                           </span>
                         </div>
                       </div>
@@ -482,17 +493,30 @@ export const AdminPartners: React.FC = () => {
                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[#F1F5F9]">
                   <button
                     type="button"
+                    disabled={isUploading}
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#475569] text-xs font-bold transition-all cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#475569] text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                   >
                     Bekor qilish
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-[#FF5A00] hover:bg-[#E04F00] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    disabled={isUploading}
+                    className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                      isUploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#FF5A00] hover:bg-[#E04F00]'
+                    }`}
                   >
-                    <Check className="w-4 h-4" />
-                    <span>{editingPartner ? 'O‘zgarishlarni saqlash' : 'Hamkorni qo‘shish'}</span>
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Rasm yuklanmoqda...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>{editingPartner ? 'O‘zgarishlarni saqlash' : 'Hamkorni qo‘shish'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

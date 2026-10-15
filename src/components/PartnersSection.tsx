@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { getMediaUrl } from '../services/api';
 
 export const PartnersSection: React.FC = () => {
   const { partners, t } = useApp();
@@ -10,6 +11,11 @@ export const PartnersSection: React.FC = () => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
+
+  const handleLogoError = (partnerId: string | number) => {
+    setFailedLogos((prev) => ({ ...prev, [String(partnerId)]: true }));
+  };
 
   const checkScroll = useCallback(() => {
     if (scrollRef.current) {
@@ -130,67 +136,75 @@ export const PartnersSection: React.FC = () => {
         >
           {/* Cycle 1 */}
           <div ref={firstCycleRef} className="flex items-stretch gap-3 sm:gap-3.5 pr-3 sm:pr-3.5 shrink-0">
-            {displayPartners.map((partner, idx) => (
-              <div
-                key={`p1-${partner.id}-${idx}`}
-                id={`partner-card-${partner.id}`}
-                className="w-[140px] sm:w-[160px] md:w-[170px] shrink-0 bg-white hover:bg-[#FAFBFD] border border-[#E2E8F0] hover:border-[#FF5A00]/40 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-2xs hover:shadow-lg hover:-translate-y-1 group cursor-default"
-              >
-                {partner.logo ? (
-                  <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-white p-0.5 sm:p-1 flex items-center justify-center mb-2 overflow-hidden border border-[#F1F5F9] shadow-2xs group-hover:scale-105 transition-transform">
-                    <img
-                      src={partner.logo}
-                      alt={partner.name}
-                      className="w-full h-full object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-[#FFF7ED] text-[#FF5A00] flex items-center justify-center mb-2 font-black text-2xl sm:text-3xl border border-[#FF5A00]/20 group-hover:scale-105 transition-transform">
-                    {partner.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
+            {displayPartners.map((partner, idx) => {
+              const hasValidLogo = Boolean(partner.logo && !failedLogos[String(partner.id)]);
+              return (
+                <div
+                  key={`p1-${partner.id}-${idx}`}
+                  id={`partner-card-${partner.id}`}
+                  className="w-[140px] sm:w-[160px] md:w-[170px] shrink-0 bg-white hover:bg-[#FAFBFD] border border-[#E2E8F0] hover:border-[#FF5A00]/40 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-2xs hover:shadow-lg hover:-translate-y-1 group cursor-default"
+                >
+                  {hasValidLogo ? (
+                    <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-white p-0.5 sm:p-1 flex items-center justify-center mb-2 overflow-hidden border border-[#F1F5F9] shadow-2xs group-hover:scale-105 transition-transform">
+                      <img
+                        src={getMediaUrl(partner.logo)}
+                        alt={partner.name}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        onError={() => handleLogoError(partner.id)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-[#FFF7ED] text-[#FF5A00] flex items-center justify-center mb-2 font-black text-2xl sm:text-3xl border border-[#FF5A00]/20 group-hover:scale-105 transition-transform">
+                      {partner.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
 
-                <span className="font-bold text-[13px] sm:text-[14px] text-[#1E293B] group-hover:text-[#FF5A00] transition-colors line-clamp-1 leading-snug">
-                  {partner.name}
-                </span>
-                <span className="text-[11px] sm:text-xs text-[#64748B] font-medium mt-0.5 line-clamp-1">
-                  {partner.category}
-                </span>
-              </div>
-            ))}
+                  <span className="font-bold text-[13px] sm:text-[14px] text-[#1E293B] group-hover:text-[#FF5A00] transition-colors line-clamp-1 leading-snug">
+                    {partner.name}
+                  </span>
+                  <span className="text-[11px] sm:text-xs text-[#64748B] font-medium mt-0.5 line-clamp-1">
+                    {partner.category}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Cycle 2 (Seamless loop wrap) */}
           <div className="flex items-stretch gap-3 sm:gap-3.5 pr-3 sm:pr-3.5 shrink-0" aria-hidden="true">
-            {displayPartners.map((partner, idx) => (
-              <div
-                key={`p2-${partner.id}-${idx}`}
-                className="w-[140px] sm:w-[160px] md:w-[170px] shrink-0 bg-white hover:bg-[#FAFBFD] border border-[#E2E8F0] hover:border-[#FF5A00]/40 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-2xs hover:shadow-lg hover:-translate-y-1 group cursor-default"
-              >
-                {partner.logo ? (
-                  <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-white p-0.5 sm:p-1 flex items-center justify-center mb-2 overflow-hidden border border-[#F1F5F9] shadow-2xs group-hover:scale-105 transition-transform">
-                    <img
-                      src={partner.logo}
-                      alt={partner.name}
-                      className="w-full h-full object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-[#FFF7ED] text-[#FF5A00] flex items-center justify-center mb-2 font-black text-2xl sm:text-3xl border border-[#FF5A00]/20 group-hover:scale-105 transition-transform">
-                    {partner.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
+            {displayPartners.map((partner, idx) => {
+              const hasValidLogo = Boolean(partner.logo && !failedLogos[String(partner.id)]);
+              return (
+                <div
+                  key={`p2-${partner.id}-${idx}`}
+                  className="w-[140px] sm:w-[160px] md:w-[170px] shrink-0 bg-white hover:bg-[#FAFBFD] border border-[#E2E8F0] hover:border-[#FF5A00]/40 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex flex-col items-center justify-center text-center transition-all duration-300 shadow-2xs hover:shadow-lg hover:-translate-y-1 group cursor-default"
+                >
+                  {hasValidLogo ? (
+                    <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-white p-0.5 sm:p-1 flex items-center justify-center mb-2 overflow-hidden border border-[#F1F5F9] shadow-2xs group-hover:scale-105 transition-transform">
+                      <img
+                        src={getMediaUrl(partner.logo)}
+                        alt={partner.name}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        onError={() => handleLogoError(partner.id)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-square max-w-[118px] sm:max-w-[136px] rounded-xl sm:rounded-2xl bg-[#FFF7ED] text-[#FF5A00] flex items-center justify-center mb-2 font-black text-2xl sm:text-3xl border border-[#FF5A00]/20 group-hover:scale-105 transition-transform">
+                      {partner.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
 
-                <span className="font-bold text-[13px] sm:text-[14px] text-[#1E293B] group-hover:text-[#FF5A00] transition-colors line-clamp-1 leading-snug">
-                  {partner.name}
-                </span>
-                <span className="text-[11px] sm:text-xs text-[#64748B] font-medium mt-0.5 line-clamp-1">
-                  {partner.category}
-                </span>
-              </div>
-            ))}
+                  <span className="font-bold text-[13px] sm:text-[14px] text-[#1E293B] group-hover:text-[#FF5A00] transition-colors line-clamp-1 leading-snug">
+                    {partner.name}
+                  </span>
+                  <span className="text-[11px] sm:text-xs text-[#64748B] font-medium mt-0.5 line-clamp-1">
+                    {partner.category}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

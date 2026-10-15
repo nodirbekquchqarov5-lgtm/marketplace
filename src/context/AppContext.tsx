@@ -739,10 +739,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (partRes.status === 'fulfilled' && Array.isArray(partRes.value) && partRes.value.length > 0) {
-        setPartners(partRes.value);
-        try {
-          localStorage.setItem('snabtash_partners', JSON.stringify(partRes.value));
-        } catch {}
+        const serverPartners = partRes.value;
+        setPartners((prev) => {
+          let localSaved: Partner[] = [];
+          try {
+            const raw = localStorage.getItem('snabtash_partners');
+            if (raw) localSaved = JSON.parse(raw);
+          } catch {}
+
+          const merged = serverPartners.map((srv) => {
+            const local =
+              prev.find((p) => String(p.id) === String(srv.id)) ||
+              localSaved.find((p) => String(p.id) === String(srv.id));
+
+            // Keep locally uploaded logo if server field is empty or local has newer upload
+            const resolvedLogo =
+              (srv.logo && srv.logo.trim()) ||
+              (local?.logo && local.logo.trim()) ||
+              '';
+
+            const resolvedName = (srv.name && srv.name.trim()) || (local?.name && local.name.trim()) || '';
+            const resolvedCategory = (srv.category && srv.category.trim()) || (local?.category && local.category.trim()) || '';
+
+            return {
+              ...srv,
+              id: String(srv.id),
+              name: resolvedName,
+              logo: resolvedLogo,
+              category: resolvedCategory,
+              order: srv.order ?? local?.order ?? 0,
+            };
+          });
+
+          // Keep any local-only partners that are not yet on the server
+          const sourceList = localSaved.length > 0 ? localSaved : prev;
+          const localOnly = sourceList.filter(
+            (loc) => !serverPartners.some((srv) => String(srv.id) === String(loc.id))
+          );
+
+          const allPartners = [...merged, ...localOnly];
+          try {
+            localStorage.setItem('snabtash_partners', JSON.stringify(allPartners));
+          } catch {}
+          return allPartners;
+        });
       }
     } catch {
       // ignore
@@ -1437,14 +1477,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updatePartner = async (id: string, updated: Partial<Partner>) => {
     setPartners((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
+      const next = prev.map((p) => (String(p.id) === String(id) ? { ...p, ...updated } : p));
       try {
         localStorage.setItem('snabtash_partners', JSON.stringify(next));
       } catch {}
       return next;
     });
+
     try {
-      await api.updatePartner(id, updated);
+      if (String(id).startsWith('partner-')) {
+        const created = await api.createPartner({
+          name: updated.name,
+          logo: updated.logo,
+          category: updated.category,
+        });
+        if (created && created.id) {
+          setPartners((prev) => {
+            const next = prev.map((p) => (String(p.id) === String(id) ? created : p));
+            try {
+              localStorage.setItem('snabtash_partners', JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        }
+      } else {
+        const res = await api.updatePartner(id, updated);
+        if (res && res.id) {
+          setPartners((prev) => {
+            const next = prev.map((p) => (String(p.id) === String(id) ? { ...p, ...res } : p));
+            try {
+              localStorage.setItem('snabtash_partners', JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        }
+      }
       notifySync();
     } catch (err) {
       console.warn('API update partner warning:', err);
@@ -1454,14 +1521,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deletePartner = async (id: string) => {
     setPartners((prev) => {
-      const next = prev.filter((p) => p.id !== id);
+      const next = prev.filter((p) => String(p.id) !== String(id));
       try {
         localStorage.setItem('snabtash_partners', JSON.stringify(next));
       } catch {}
       return next;
     });
     try {
-      await api.deletePartner(id);
+      if (!String(id).startsWith('partner-')) {
+        await api.deletePartner(id);
+      }
       notifySync();
     } catch (err) {
       console.warn('API delete partner warning:', err);
